@@ -40,8 +40,6 @@ data/
   sample/                         Optional lightweight examples
 
 docs/
-  data_inventory.csv              Dataset-level provenance and release status
-  code_provenance.csv             One-row-per-retained-script provenance table
   workflow.md                     Recommended execution order and reproducibility boundary
   preprocessing_reproducibility.md
 
