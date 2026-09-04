@@ -1,3 +1,5 @@
+This code-related work is currently in the submission stage and can not be used casually before it is officially accepted.
+
 # Global Dryland Vegetation Expansion
 
 Code and selected processed data supporting the analysis of global dryland vegetation-cover expansion during 2000–2022.
