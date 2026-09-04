@@ -1,0 +1,26 @@
+name: global-dryland-vegetation-expansion
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - geopandas
+  - rasterio
+  - rasterstats
+  - gdal
+  - shapely
+  - pyproj
+  - scipy
+  - matplotlib
+  - openpyxl
+  - xlrd
+  - h5py
+  - xarray
+  - tqdm
+  - statsmodels
+  - linearmodels
+  - pip
+  - pip:
+      - semopy
+      - geodatasets

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Generated analysis products
+outputs/
+
+# Large raw/intermediate geoscience files
+# Selected processed release files under data/processed/ are intentionally tracked.
+data/raw/
+data/interim/
+data/external/**/*.tif
+data/external/**/*.tiff
+data/external/**/*.nc
+data/external/**/*.grib
+data/external/**/*.grib2
+
+# Temporary files
+*.tmp
+*.log
+~$*
