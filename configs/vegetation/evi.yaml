@@ -1,0 +1,27 @@
+name: evi
+index: EVI
+description: Reusable vegetation-expansion configuration. Scientific logic is implemented
+  once in src/01_vegetation_expansion/.
+threshold:
+  enabled: false
+  input_folder: data/local/vegetation/evi_annual
+  output_folder: data/local/vegetation/evi_thresholded_8857
+  tif_pattern: '*.tif'
+  threshold: null
+  scale_factor: 1.0
+  dst_crs: EPSG:8857
+  dst_resolution_m: 500
+  nodata_out: 255
+  overwrite: false
+  note: The executed EVI threshold value is not recoverable from the current code
+    archive. Do not invent a value. This configuration starts from the existing binary
+    EPSG:8857 EVI rasters when available.
+hex_trend:
+  tif_folder: data/local/vegetation/evi_thresholded_8857
+  tif_pattern: '*_measure.tif'
+  mask_vector: data/local/drylands/drylands_8857.shp
+  raster_crs: EPSG:8857
+  hex_area_km2: 100
+  orientation: flat
+  output_prefix: outputs/vegetation/evi/EVI_trend_hex_100
+  n_jobs: auto

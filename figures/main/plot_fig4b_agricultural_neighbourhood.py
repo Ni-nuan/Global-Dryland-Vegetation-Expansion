@@ -27,7 +27,7 @@ from matplotlib.ticker import FuncFormatter, PercentFormatter
 # =============================================================================
 # Paths
 # =============================================================================
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 OUTDIR = REPO_ROOT / "outputs/figures/figure4"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 

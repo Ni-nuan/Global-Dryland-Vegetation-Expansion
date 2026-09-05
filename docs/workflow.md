@@ -1,37 +1,65 @@
-# Workflow and reproducibility boundary
+# Workflow
 
-## 1. Vegetation preprocessing and expansion detection
+## 1. Vegetation source rasters
 
-The supplied GEE workflow exports annual maximum MODIS NDVI from merged Collection 6.1 MOD13A1 and MYD13A1 collections. Selected thresholding and EPSG:8857 reprojection were performed in ArcGIS Pro. The retained Python trend engine computes annual vegetation fraction on the 100-km² grid and applies Mann–Kendall and Sen's-slope classification using the locked study rules.
+Use the Google Earth Engine scripts under `src/01_vegetation_expansion/gee/` for annual-maximum NDVI preprocessing. EVI and MSAVI robustness source scripts are under `src/08_robustness/gee/`.
 
-## 2. Land-cover process contexts
+Partitioned GeoTIFFs can be mosaicked with:
 
-Endpoint land-cover transitions are summarized into the six analysis contexts used downstream: Other, No transition, Bare to sparse, Bare/sparse to grass/forest, Agricultural expansion and Urban expansion. These contexts describe dominant transition settings rather than unique causal mechanisms.
+```bash
+python src/00_preprocessing/mosaic_geotiffs.py --input-folder <tile_folder> --output <annual_mosaic.tif>
+```
 
-## 3. Wettest-90-day hydroclimate
+## 2. Thresholding and projection
 
-ERA5-Land daily precipitation defines the pixel-specific within-year wettest consecutive 90-day window. The retained GEE code exports P90/startDOY and the aligned temperature, VPD, surface/root-zone soil moisture, evapotranspiration and net shortwave radiation. The raster-to-100-km²-hexagon conversion script is unavailable; processed hexagon tables are the downstream reproduction boundary for that stage.
+One reusable engine is used for all recovered threshold-based vegetation configurations:
 
-## 4. SEM diagnostic
+```bash
+python src/01_vegetation_expansion/threshold_rasters.py --config configs/vegetation/ndvi_main.yaml
+```
 
-`code/04_sem/fit_hydroclimate_sem.py` uses the final L1 surface-soil-moisture formulation (`SM_CHOICE = "l1"`) and the theory-guided hydroclimatic SEM. `run_sem_without_direct_swnet.py` is the predefined structural sensitivity that removes the direct SWnet-to-vegetation path while retaining the remaining formulation.
+The locked coding is `value <= threshold -> 1` and `value > threshold -> 0`; the output is reprojected with nearest-neighbour resampling to EPSG:8857 at 500 m. The main NDVI threshold is 0.20. NDVI threshold sensitivities use 0.16, 0.18, 0.22 and 0.24. The recovered MSAVI branch uses 0.14.
 
-## 5. Panel attribution
+The executed EVI threshold value is not recoverable from the current code archive. `evi.yaml` therefore begins from existing thresholded EVI rasters and does not invent a threshold.
 
-`code/05_attribution/run_panel_attribution.py` is the main VPD-residual NAT0 panel fixed-effects engine. It preserves entity fixed effects, the P90 × VPD_resid interaction constructed before standardization, regression-sample z-scoring, logit response transformation and the absolute-trend natural-share decomposition. The main background panel uses the CAMS-derived XCO2 table; NOAA CarbonTracker is retained as an alternative background-source sensitivity.
+## 3. Vegetated fraction and hexagon trends
 
-## 6. Stratification
+Use the same trend engine for the main and sensitivity configurations:
 
-Aridity analyses form driver quintiles within each aridity class. Process-context analyses form driver quintiles globally across the eligible UP sample before crossing them with process classes. End-member contrasts use the final Q5 − Q1 convention.
+```bash
+python src/01_vegetation_expansion/compute_hex_trends.py --config configs/vegetation/ndvi_main.yaml
+```
 
-## 7. Agricultural neighbourhood
+The engine generates an axial equal-area hexagon grid, computes annual vegetated fraction as `(count - sum) / count`, and applies the tie-corrected Mann–Kendall test and Sen's slope using the actual year values. The main analysis uses 100 km²; the 75 and 125 km² sensitivity analyses change only the configuration.
 
-The neighbourhood workflow uses agricultural-expansion UP hexagons as focal units, boundary-sharing ring 1, and ring 2 defined from neighbours of ring-1 cells while excluding the focal. The main comparison uses the combined ring1+ring2 neighbourhood after retaining non-agricultural UP neighbours. Local excess is the focal observed vegetation-fraction trend minus the median observed trend of neighbouring non-agricultural UP hexagons.
+## 4. Endpoint summaries and process contexts
+
+`src/01_vegetation_expansion/calculate_three_year_endpoint_change.py` computes the 2000–2002 versus 2020–2022 three-year-window endpoint summary.
+
+`src/02_landcover_context/build_process_context_table.py` prepares the process-context table used by downstream stratification and Figure 4 analyses.
+
+## 5. Hydroclimate
+
+`src/03_hydroclimate/gee/compute_w90_precipitation_startdoy.js` identifies the within-year wettest consecutive 90-day precipitation window and exports P90/startDOY.
+
+`src/03_hydroclimate/gee/export_w90_era5land_drivers.js` aligns ERA5-Land temperature, VPD, soil moisture, evapotranspiration and net shortwave radiation to the precomputed W90 window.
+
+The missing raster-to-hex extraction step is documented in `docs/preprocessing_reproducibility.md`.
+
+## 6. SEM and attribution
+
+`src/04_sem/fit_sem_hydroclimate_structure.py` runs the main hydroclimatic SEM diagnostic. `src/04_sem/run_sem_structure_sensitivity.py` runs the predefined structural sensitivity.
+
+`src/05_attribution/run_panel_attribution.py` is the main VPD-residual NAT0 panel fixed-effects attribution engine. Diagnostics are stored under `src/05_attribution/diagnostics/`; the raw-VPD sensitivity is under `src/08_robustness/attribution/`.
+
+## 7. Stratification and agricultural neighbourhood
+
+`src/06_stratification/` contains aridity and process-context driver-gradient summaries.
+
+`src/07_agricultural_neighbourhood/analyze_agricultural_neighbourhoods.py` runs the agricultural-neighbourhood contextual analysis.
 
 ## 8. Robustness and figures
 
-Alternative vegetation indices, raw-VPD attribution, temporal diagnostics, VIF, VOD validation and pixel-vs-hex comparisons are stored under `code/08_robustness/`. Figure scripts are stored under `code/09_figures/` and write generated products to `outputs/`.
+Additional vegetation-index, VOD, pixel-vs-hex and attribution checks are under `src/08_robustness/`.
 
-## Missing-code policy
-
-Missing preprocessing code is documented rather than guessed. See `preprocessing_reproducibility.md`. The public code tree contains only the latest retained implementation for each current analytical function; historical versions are not duplicated in the executable tree.
+Publication figure scripts are separated from analytical engines under `figures/main/` and `figures/supplementary/`. Generated PNG/PDF/SVG files are written to `outputs/` and are not tracked.

@@ -6,7 +6,7 @@ This file records the principal external datasets used by the workflow. Detailed
 
 Annual vegetation-index preprocessing follows the supplied Google Earth Engine code. The NDVI workflow merges MODIS Collection 6.1 `MOD13A1` and `MYD13A1` before computing the annual pixelwise maximum. EVI robustness uses the corresponding EVI products. MSAVI robustness uses red/NIR reflectance from the same product family with `SummaryQA <= 1` before MSAVI calculation and annual maximum.
 
-Selected downstream TIFF thresholding and EPSG:8857 reprojection were performed in ArcGIS Pro. The original production scripts for those manual GIS steps are not retained.
+A historical Python implementation of the threshold/reprojection operation has been recovered and is released as `src/01_vegetation_expansion/threshold_rasters.py`. Some production TIFF processing was nevertheless executed in ArcGIS Pro, so the repository distinguishes executable method reconstruction from exact execution provenance.
 
 ## ERA5-Land
 
@@ -39,4 +39,4 @@ The dryland study mask derives from the UNEP-WCMC global dryland extent used in 
 
 ## Vegetation optical-depth validation
 
-VOD robustness uses VODCA v2 CXKu and a merged AMSR-E/AMSR2/WindSat C-band VOD product as documented in `docs/data_inventory.csv` and the scripts under `code/08_robustness/vod/`.
+VOD robustness uses VODCA v2 CXKu and a merged AMSR-E/AMSR2/WindSat C-band VOD product as documented in `docs/data_inventory.csv` and the scripts under `src/08_robustness/vod/`.

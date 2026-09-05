@@ -186,7 +186,7 @@ REGIONS: Dict[str, Tuple[float, float, float, float]] = {
 # 6. General helpers
 # =============================================================================
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def resolve_path(path: Optional[Path]) -> Optional[Path]:

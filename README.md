@@ -1,87 +1,87 @@
-This code-related work is currently in the submission stage and can not be used casually before it is officially accepted.
-
 # Global Dryland Vegetation Expansion
 
-Code and selected processed data supporting the analysis of global dryland vegetation-cover expansion during 2000–2022.
+Code, configuration files, and selected processed data supporting the analysis of global dryland vegetation-cover expansion during 2000–2022.
 
-## Repository scope
+## Repository design
 
-This repository is organized to support transparent reuse of the final analysis workflow rather than to preserve every historical working file. For each scientific function, only the latest retained public script is kept in the code tree. Historical filenames and superseded versions are recorded only where needed for provenance.
+The public repository follows a **single-engine + configuration** rule wherever the calculation is identical across experiments. Historical copies such as `*_final`, `*_new`, `*_fixed`, `*_v2`, etc. are not retained in the public code tree.
 
-The workflow covers:
+The clearest example is vegetation-expansion detection:
 
-1. vegetation-index preprocessing and vegetation-cover expansion detection;
-2. land-cover process-context classification;
-3. wettest-90-day hydroclimatic alignment;
-4. SEM-based hydroclimatic pathway diagnostics;
-5. panel fixed-effects attribution with an XCO2-indexed shared-background component;
-6. aridity and process-context stratification;
-7. agricultural-neighbourhood analyses; and
-8. robustness, validation and figure reproduction.
+```text
+src/01_vegetation_expansion/
+├── threshold_rasters.py
+├── compute_hex_trends.py
+├── calculate_three_year_endpoint_change.py
+├── diagnostics/
+└── gee/
+
+configs/vegetation/
+├── ndvi_main.yaml
+├── ndvi_threshold_016.yaml
+├── ndvi_threshold_018.yaml
+├── ndvi_threshold_022.yaml
+├── ndvi_threshold_024.yaml
+├── evi.yaml
+├── msavi.yaml
+├── ndvi_hex_75km2.yaml
+├── ndvi_hex_100km2.yaml
+└── ndvi_hex_125km2.yaml
+```
+
+`threshold_rasters.py` and `compute_hex_trends.py` are the reusable engines. Threshold, vegetation product, input/output paths, and hexagon area are specified in YAML rather than by duplicating scripts.
+
+## Quick start: vegetation workflow
+
+Run from the repository root.
+
+Check a configuration:
+
+```bash
+python src/01_vegetation_expansion/threshold_rasters.py --config configs/vegetation/ndvi_main.yaml --check-config
+python src/01_vegetation_expansion/compute_hex_trends.py --config configs/vegetation/ndvi_main.yaml --check-config
+```
+
+Run the main NDVI workflow once local raster inputs are available:
+
+```bash
+python src/01_vegetation_expansion/threshold_rasters.py --config configs/vegetation/ndvi_main.yaml
+python src/01_vegetation_expansion/compute_hex_trends.py --config configs/vegetation/ndvi_main.yaml
+```
+
+Change only the configuration file to run threshold or spatial-scale sensitivity analyses.
 
 ## Repository structure
 
 ```text
-code/
-  00_preprocessing/               Raster preprocessing utilities
-  01_vegetation_expansion/        Vegetation-cover fraction and trend detection
-  02_landcover_context/           Land-cover process-context preparation
-  03_hydroclimate/                W90 precipitation/startDOY and aligned ERA5-Land extraction
-  04_sem/                         Hydroclimatic SEM diagnostics
-  05_attribution/                 Main panel fixed-effects attribution
-  06_stratification/              Aridity and process-context stratification
-  07_agricultural_neighbourhood/  Agricultural-neighbourhood analysis
-  08_robustness/                  Alternative formulations, VOD and pixel-level checks
-  09_figures/                     Main and supplementary figure scripts
-
+src/                    reusable analysis and preprocessing code
+configs/                experiment/product configuration files
+figures/                main and supplementary figure-generation scripts
 data/
-  README.md                       Data-release boundary and directory guide
-  processed/                      Selected processed inputs needed for reproduction
-  sample/                         Optional lightweight examples
-
+  README.md              data layout and reproduction boundary
+  processed/             selected processed inputs required downstream
+  sample/                lightweight examples/readme material
 docs/
-  workflow.md                     Recommended execution order and reproducibility boundary
+  code_provenance.csv    refactored code name -> purpose -> original script lineage
+  data_inventory.csv     data inventory
+  workflow.md            execution sequence
   preprocessing_reproducibility.md
-
-CODE_MAP.md                        Method-to-code map
-DATA_SOURCES.md                    External dataset provenance
-requirements.txt                   Python dependencies
-environment.yml                    Conda environment specification
+CODE_MAP.md              human-readable “refactored code name : purpose” map
+DATA_SOURCES.md           public source datasets and provenance
+requirements.txt
+environment.yml
 ```
 
-Generated figures and analysis outputs are **not versioned in the repository**. Scripts write them under `outputs/`, which is excluded by `.gitignore`.
+Generated figures and analysis outputs are intentionally excluded from version control.
+
+## Scientific method lock
+
+Repository restructuring does not redefine the analysis. In particular, the vegetation engine preserves the axial hexagon geometry, binary coding (`1 = below-threshold/non-vegetated`, `0 = vegetated`), `veg_frac = (count - sum) / count`, `all_touched=False`, minimum three valid annual observations, tie-corrected Mann–Kendall test, and Sen's slope. Model sample definitions, residualization, standardization order, fixed-effects specifications, attribution decomposition, and plotted statistics are likewise not altered by repository cleanup.
 
 ## Reproducibility boundary
 
-Most downstream statistical and figure workflows are scripted. Two preprocessing boundaries are intentionally documented rather than reconstructed from assumptions:
+The recovered threshold/reprojection script reproduces the locked operation used in the raster workflow, but some production TIFF processing was executed in ArcGIS Pro. The original raster/netCDF-to-100-km²-hex table extraction code for several environmental datasets is no longer available. Those gaps are documented explicitly in `docs/preprocessing_reproducibility.md`; downstream analyses use selected processed hexagon-level inputs where necessary rather than inventing missing code.
 
-- selected vegetation-index TIFF thresholding and EPSG:8857 reprojection were performed in ArcGIS Pro;
-- some raster/netCDF-to-100-km²-hexagon table conversion scripts are no longer available.
+## Code map
 
-For those branches, selected processed hexagon-level inputs under `data/processed/` are the reproducibility starting point. See `docs/preprocessing_reproducibility.md`.
-
-## Environment
-
-The Python environment can be created with Conda:
-
-```bash
-conda env create -f environment.yml
-conda activate global-dryland-vegetation-expansion
-```
-
-or with pip:
-
-```bash
-python -m venv .venv
-python -m pip install -r requirements.txt
-```
-
-Google Earth Engine JavaScript files under `code/**/gee/` are intended for the Earth Engine Code Editor and are not executed by the local Python environment.
-
-## Running the workflow
-
-Run Python scripts from the repository root unless a script explicitly documents a different execution context. The recommended order and required inputs are listed in `CODE_MAP.md` and `docs/workflow.md`.
-
-## Data sources
-
-Source datasets, product identities and known provenance limits are summarized in `DATA_SOURCES.md`. Raw global remote-sensing and reanalysis archives are not redistributed here; only selected processed inputs needed to bridge unrecovered preprocessing stages are retained.
+See [CODE_MAP.md](CODE_MAP.md) for the complete **refactored code name : purpose** list and [docs/code_provenance.csv](docs/code_provenance.csv) for original filenames and SHA-256 lineage.

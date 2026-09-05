@@ -18,6 +18,7 @@ dependencies:
   - h5py
   - xarray
   - tqdm
+  - pyyaml
   - statsmodels
   - linearmodels
   - pip

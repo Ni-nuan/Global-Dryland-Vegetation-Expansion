@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""
-多年 NDVI（二值化）趋势分析（六边形蜂窝格网，轴坐标 Axial 生成，全球制图）
-- 单元：规则六边形（无缝平铺，避免 offset-row/col 造成的周期性三角缝）
-- 指标：Mann-Kendall (Kendall's tau + p-value) + Sen's slope
-- 输出：Shapefile（字段截断）、CSV（全字段）、PNG（仅显著、全部六边形）
+"""Reusable axial-hex vegetation-cover trend engine.
 
-说明：
-1) 该版本将“六边形格网生成”替换为 Axial(q,r) 标准蜂窝坐标系，确保几何无缝。
-2) 仍沿用你原脚本的：多年份 TIF 读取、zonal_stats 并行、趋势并行、全球底图制图与输出逻辑。
-3) Windows 并行：所有 worker 都在顶层定义，可 pickle。
+The engine is shared by the main NDVI analysis and vegetation threshold/index/
+spatial-scale sensitivity runs. Product-specific settings are supplied through
+``configs/vegetation/*.yaml``. The locked scientific operations are retained:
+annual vegetated fraction from binary masks, tie-corrected Mann-Kendall trend
+testing, and Sen's slope using actual year values.
 """
 
+import argparse
 import os
 import re
 import glob
 import warnings
+from pathlib import Path
+import yaml
 from multiprocessing import Pool, cpu_count
 from typing import List, Tuple
 
@@ -23,8 +23,6 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon
 from shapely import wkb as shapely_wkb
-
-from rasterstats import zonal_stats
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
@@ -35,16 +33,97 @@ plt.rcParams["font.sans-serif"] = ["SimHei"]
 plt.rcParams["axes.unicode_minus"] = False
 
 
-# ==================== 用户配置 ====================
-tif_folder = "MODIS_MSAVI_fixed_0.14"                         # 多年份 TIF 文件夹
-tif_pattern = "MODIS_MSAVI_*_measure.tif"               # 文件名模式（需包含4位年份）
-mask_shp = "Drylands_dataset_fixed/drylands_8857.shp"  # 掩膜（建议已在 EPSG:8857）
-raster_crs = "EPSG:8857"                               # 与 NDVI 栅格一致的 CRS
-hex_area_km2 = 100                                    # 六边形面积（km^2），你现在用的是 3000
-orientation = "flat"                                   # "flat"=平顶；"pointy"=尖顶（两者都无缝）
-output_prefix = f"NDVI_MSAVI_0.14_trend_hex_{hex_area_km2}"     # 输出前缀
-n_jobs = max(1, cpu_count() - 1)                       # 并行核数
-# ==================================================
+# ==================== Runtime configuration ====================
+#
+# Product, threshold and spatial-scale differences are supplied through
+# configs/vegetation/*.yaml. The statistical and geometric engine below is
+# shared across main and sensitivity runs.
+#
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Populated by apply_config() before the workflow runs.
+tif_folder = None
+tif_pattern = None
+mask_shp = None
+raster_crs = None
+hex_area_km2 = None
+orientation = None
+output_prefix = None
+n_jobs = None
+INDEX_LABEL = "Vegetation index"
+
+
+def _resolve_repo_path(value):
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    return (REPO_ROOT / path).resolve()
+
+
+def load_config(config_path):
+    path = Path(config_path).expanduser()
+    if not path.is_absolute() and not path.exists():
+        path = REPO_ROOT / path
+    if not path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {path}")
+    with path.open("r", encoding="utf-8") as fh:
+        config = yaml.safe_load(fh) or {}
+    if "hex_trend" not in config:
+        raise KeyError(f"Missing 'hex_trend' section in {path}")
+    return config
+
+
+def apply_config(config):
+    global tif_folder, tif_pattern, mask_shp, raster_crs
+    global hex_area_km2, orientation, output_prefix, n_jobs, INDEX_LABEL
+
+    cfg = config["hex_trend"]
+    required = [
+        "tif_folder", "tif_pattern", "mask_vector", "raster_crs",
+        "hex_area_km2", "orientation", "output_prefix",
+    ]
+    missing = [key for key in required if key not in cfg]
+    if missing:
+        raise KeyError(f"Missing hex_trend configuration keys: {missing}")
+
+    tif_folder = str(_resolve_repo_path(cfg["tif_folder"]))
+    tif_pattern = str(cfg["tif_pattern"])
+    mask_shp = str(_resolve_repo_path(cfg["mask_vector"]))
+    raster_crs = str(cfg["raster_crs"])
+    hex_area_km2 = float(cfg["hex_area_km2"])
+    orientation = str(cfg["orientation"])
+    output_prefix = str(_resolve_repo_path(cfg["output_prefix"]))
+
+    jobs = cfg.get("n_jobs", "auto")
+    if isinstance(jobs, str) and jobs.lower() == "auto":
+        n_jobs = max(1, cpu_count() - 1)
+    else:
+        n_jobs = max(1, int(jobs))
+
+    INDEX_LABEL = str(config.get("index", "Vegetation index"))
+
+    if orientation not in {"flat", "pointy"}:
+        raise ValueError("hex_trend.orientation must be 'flat' or 'pointy'")
+    if hex_area_km2 <= 0:
+        raise ValueError("hex_trend.hex_area_km2 must be positive")
+
+    Path(output_prefix).parent.mkdir(parents=True, exist_ok=True)
+
+
+def print_config_summary(config):
+    cfg = config["hex_trend"]
+    print("=" * 70)
+    print(f"Configuration : {config.get('name', '<unnamed>')}")
+    print(f"Index         : {INDEX_LABEL}")
+    print(f"Binary rasters: {tif_folder}/{tif_pattern}")
+    print(f"Dryland mask  : {mask_shp}")
+    print(f"Raster CRS    : {raster_crs}")
+    print(f"Hex area      : {hex_area_km2:g} km^2")
+    print(f"Orientation   : {orientation}")
+    print(f"Output prefix : {output_prefix}")
+    print(f"Workers       : {n_jobs}")
+    print("=" * 70)
+
 
 
 def load_world_basemap(target_crs):
@@ -236,6 +315,7 @@ def load_tif_files(tif_folder: str, tif_pattern: str) -> Tuple[List[str], List[i
 
 
 def compute_yearly_veg_ratio(args):
+    from rasterstats import zonal_stats
     """
     计算单个年份所有六边形的绿化比例：
     - stats=["count","sum"]
@@ -431,7 +511,7 @@ def visualize_significant(hex_gdf: gpd.GeoDataFrame, years: List[int], output_pn
     ax.set_xlim(minx - buf, maxx + buf)
     ax.set_ylim(miny - buf, maxy + buf)
 
-    ax.set_title(f"NDVI Trend Analysis ({years[0]}-{years[-1]})\nMann-Kendall Test (Significant Only, p<0.05)",
+    ax.set_title(f"{INDEX_LABEL} Trend Analysis ({years[0]}-{years[-1]})\nMann-Kendall Test (Significant Only, p<0.05)",
                  fontsize=16, fontweight="bold", pad=20)
     ax.axis("off")
     plt.tight_layout()
@@ -493,7 +573,7 @@ def visualize_all(hex_gdf: gpd.GeoDataFrame, years: List[int], output_png_all: s
     n_sig = len(sig)
     n_not = len(not_sig)
     ax.set_title(
-        f"NDVI Trend Analysis - All Hexagons ({years[0]}-{years[-1]})\n"
+        f"{INDEX_LABEL} Trend Analysis - All Hexagons ({years[0]}-{years[-1]})\n"
         f"Total: {n_total:,} | Significant: {n_sig:,} ({(n_sig/n_total*100 if n_total else 0):.1f}%) | "
         f"Not Significant: {n_not:,} ({(n_not/n_total*100 if n_total else 0):.1f}%)",
         fontsize=14, fontweight="bold", pad=20
@@ -579,64 +659,82 @@ def print_summary(hex_gdf: gpd.GeoDataFrame, years: List[int]):
     print("=" * 70)
 
 
-# ==================== 主程序 ====================
-if __name__ == "__main__":
+# ==================== Main program ====================
+def run(config, check_only=False):
     import time
+
+    apply_config(config)
+    print_config_summary(config)
+    if check_only:
+        return
 
     start_time = time.time()
     print("=" * 70)
-    print("🌱 多年 NDVI 趋势分析（六边形蜂窝 Axial，无缝）")
-    print("   Mann-Kendall + Sen's slope + 全球制图输出")
+    print(f"Vegetation trend analysis: {INDEX_LABEL}")
+    print("Mann-Kendall + Sen's slope on axial hexagons")
     print("=" * 70)
-    print(f"使用 {n_jobs} 个CPU核心 | hex_area={hex_area_km2} km² | orientation={orientation}\n")
 
-    # 1) 读取 mask
-    print("[1/6] 读取掩膜 ...")
+    print("[1/6] Reading dryland mask ...")
     t1 = time.time()
     mask = gpd.read_file(mask_shp)
     mask = mask.to_crs(raster_crs)
-    print(f"✓ mask polygons={len(mask)} ({time.time()-t1:.2f}s)")
+    print(f"mask polygons={len(mask)} ({time.time()-t1:.2f}s)")
 
-    # 2) 生成六边形格网（Axial）
-    print("\n[2/6] 生成六边形蜂窝格网（Axial） ...")
+    print("\n[2/6] Generating axial hexagon grid ...")
     t2 = time.time()
     side = hex_side_from_area(hex_area_km2 * 1e6)
     print(f"side={side:.3f} m")
     hex_gdf = generate_hex_grid_axial(mask, side, orientation=orientation, n_jobs=n_jobs, margin=3)
-    print(f"✓ hexes={len(hex_gdf):,} ({time.time()-t2:.2f}s)")
+    print(f"hexes={len(hex_gdf):,} ({time.time()-t2:.2f}s)")
 
-    # 3) 加载 TIF
-    print("\n[3/6] 加载多年份 TIF ...")
+    print("\n[3/6] Loading annual binary rasters ...")
     t3 = time.time()
     file_paths, years = load_tif_files(tif_folder, tif_pattern)
-    print(f"✓ ({time.time()-t3:.2f}s)")
+    print(f"done ({time.time()-t3:.2f}s)")
 
-    # 4) 计算每年 veg ratio
-    print("\n[4/6] 计算每年六边形 veg ratio ...")
+    print("\n[4/6] Computing annual vegetated fraction ...")
     t4 = time.time()
     veg_matrix = parallel_compute_all_years(file_paths, years, hex_gdf, n_jobs=n_jobs)
-    print(f"✓ veg_matrix={veg_matrix.shape[0]:,}×{veg_matrix.shape[1]} ({time.time()-t4:.2f}s)")
+    print(f"veg_matrix={veg_matrix.shape[0]:,}x{veg_matrix.shape[1]} ({time.time()-t4:.2f}s)")
 
-    # 5) 趋势分析
-    print("\n[5/6] 趋势分析（MK + Sen） ...")
+    print("\n[5/6] Trend analysis (MK + Sen) ...")
     t5 = time.time()
     tau_values, p_values, sen_slopes = parallel_trend_analysis(veg_matrix, years, n_jobs=n_jobs)
-    print(f"✓ ({time.time()-t5:.2f}s)")
+    print(f"done ({time.time()-t5:.2f}s)")
 
-    # 添加属性
     hex_gdf = add_trend_attributes(hex_gdf, tau_values, p_values, sen_slopes, veg_matrix, years)
 
-    # 6) 输出
-    print("\n[6/6] 保存输出（SHP/CSV/PNG） ...")
+    print("\n[6/6] Saving outputs ...")
     t6 = time.time()
     out_shp, out_csv, out_png, out_png_all = save_outputs(hex_gdf, years, output_prefix)
-    print(f"✓ ({time.time()-t6:.2f}s)")
+    print(f"done ({time.time()-t6:.2f}s)")
 
     print_summary(hex_gdf, years)
-    print(f"\n⏱️ 总耗时: {time.time()-start_time:.2f}s")
-    print("\n💾 输出文件:")
-    print(f"  • {out_png}")
-    print(f"  • {out_png_all}")
-    print(f"  • {out_shp}")
-    print(f"  • {out_csv}")
-    print("=" * 70)
+    print(f"\nTotal elapsed: {time.time()-start_time:.2f}s")
+    print("Outputs:")
+    print(f"  {out_png}")
+    print(f"  {out_png_all}")
+    print(f"  {out_shp}")
+    print(f"  {out_csv}")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Compute annual vegetated fraction and MK/Sen trends on axial hexagons."
+    )
+    parser.add_argument("--config", required=True, help="Path to a vegetation YAML configuration.")
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="Validate and display the configuration without reading input data.",
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    run(load_config(args.config), check_only=args.check_config)
+
+
+if __name__ == "__main__":
+    main()

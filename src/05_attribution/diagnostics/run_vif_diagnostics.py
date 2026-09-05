@@ -55,9 +55,9 @@ import pandas as pd
 # =============================================================================
 
 # Original model script to reuse IO and preprocessing functions.
-# The canonical model script lives under code/05_attribution in the public tree.
+# The canonical model script lives under src/05_attribution in the public tree.
 # Edit the path below only if the repository layout changes.
-MODEL_SCRIPT = r"../../05_attribution/run_panel_attribution.py"
+MODEL_SCRIPT = r"../run_panel_attribution.py"
 
 # Input directories (ONLY these two)
 DIR_UP = r"zonal_tables_parallel_up_V2"

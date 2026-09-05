@@ -1,3 +1,4 @@
+import argparse
 import os
 import glob
 from osgeo import gdal
@@ -51,10 +52,16 @@ def convert_and_mosaic(input_folder, output_path):
             os.remove(f)
 
 
-if __name__ == "__main__":
-    # 示例
-    input_folder = "MODIS_EVI/2022"  # 输入文件夹路径
-    output_path = "MODIS_KEVI_2022.tif"  # 输出路径
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert GeoTIFF tiles to Float32, build a VRT, and export one mosaic GeoTIFF."
+    )
+    parser.add_argument("--input-folder", required=True, help="Folder containing input .tif tiles.")
+    parser.add_argument("--output", required=True, help="Output mosaic GeoTIFF path.")
+    args = parser.parse_args()
+    convert_and_mosaic(args.input_folder, args.output)
 
-    convert_and_mosaic(input_folder, output_path)
+
+if __name__ == "__main__":
+    main()
 

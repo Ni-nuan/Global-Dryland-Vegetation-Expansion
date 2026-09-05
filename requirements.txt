@@ -17,3 +17,5 @@ statsmodels
 linearmodels
 semopy
 geodatasets
+
+PyYAML
