@@ -64,8 +64,6 @@ data/
   processed/             selected processed inputs required downstream
   sample/                lightweight examples/readme material
 docs/
-  code_provenance.csv    refactored code name -> purpose -> original script lineage
-  data_inventory.csv     data inventory
   workflow.md            execution sequence
   preprocessing_reproducibility.md
 CODE_MAP.md              human-readable “refactored code name : purpose” map
