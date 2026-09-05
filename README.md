@@ -6,7 +6,7 @@ Code, configuration files, and selected processed data supporting the analysis o
 
 ## Repository design
 
-The public repository follows a **single-engine + configuration** rule wherever the calculation is identical across experiments. Historical copies such as `*_final`, `*_new`, `*_fixed`, `*_v2`, etc. are not retained in the public code tree.
+The public repository follows a **single-engine + configuration** rule wherever the calculation is identical across experiments.
 
 The clearest example is vegetation-expansion detection:
 
