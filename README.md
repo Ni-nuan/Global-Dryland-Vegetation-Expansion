@@ -1,4 +1,4 @@
-This code-related work is currently in the submission stage and can not be used casually before it is officially accepted.
+This code-related work is currently in the submission stage and can not be used before it is officially accepted.
 
 # Global Dryland Vegetation Expansion
 
